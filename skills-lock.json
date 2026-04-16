@@ -1,20 +1,20 @@
 {
-  "version": 1,
-  "skills": {
-    "apify-actor-development": {
-      "source": "apify/agent-skills",
-      "sourceType": "github",
-      "computedHash": "425fe06d1e77d3375a5eed157c108304908892b7f65b021b125b9d1555f3b01a"
-    },
-    "apify-generate-output-schema": {
-      "source": "apify/agent-skills",
-      "sourceType": "github",
-      "computedHash": "ab09d887aed3a381519d079c3ba47f261caa8b71a7a3680b0a806e369e9525ab"
-    },
-    "apify-ultimate-scraper": {
-      "source": "apify/agent-skills",
-      "sourceType": "github",
-      "computedHash": "94d190fc6c2fe7d99780f5108ef91477d930cd37fa6a0a28ed3133a427631636"
+    "version": 1,
+    "skills": {
+        "apify-actor-development": {
+            "source": "apify/agent-skills",
+            "sourceType": "github",
+            "computedHash": "425fe06d1e77d3375a5eed157c108304908892b7f65b021b125b9d1555f3b01a"
+        },
+        "apify-generate-output-schema": {
+            "source": "apify/agent-skills",
+            "sourceType": "github",
+            "computedHash": "ab09d887aed3a381519d079c3ba47f261caa8b71a7a3680b0a806e369e9525ab"
+        },
+        "apify-ultimate-scraper": {
+            "source": "apify/agent-skills",
+            "sourceType": "github",
+            "computedHash": "94d190fc6c2fe7d99780f5108ef91477d930cd37fa6a0a28ed3133a427631636"
+        }
     }
-  }
 }

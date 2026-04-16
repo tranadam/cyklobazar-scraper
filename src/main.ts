@@ -1,5 +1,5 @@
 import { CheerioCrawler } from '@crawlee/cheerio';
-import { Actor, log } from 'apify';
+import { Actor } from 'apify';
 
 import { initSeenOffers, router } from './routes.js';
 
