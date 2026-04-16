@@ -2,29 +2,42 @@ import { createCheerioRouter } from '@crawlee/cheerio';
 
 export const router = createCheerioRouter();
 
-router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
-    const offerLinks: string[] = [];
-    const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
-    $('a.cb-offer[href*="/inzerat/"]').each((i, el) => {
-        if (startDate) {
-            const publishedString = $(el).find('.cb-time-ago').attr('title');
-            const publishedAt = /\d+\. \d+\. \d{4}/.exec(publishedString ?? '')?.[0];
-            if (publishedAt) {
-                const [day, month, year] = publishedAt.split('.').map(Number);
-                const publishedDate = new Date(year, month - 1, day);
-                if (publishedDate < startDate) return;
-            }
-        }
-        const offerLink = $(el).attr('href');
-        if (offerLink) {
-            log.info(`Found offer ${i}: ${offerLink}`);
-            offerLinks.push(offerLink);
-        }
+function parseCzechDate(text: string): Date | null {
+    const match = /\d+\.\s*\d+\.\s*\d{4}/.exec(text)?.[0];
+    if (!match) return null;
+    const [day, month, year] = match.split('.').map(Number);
+    return new Date(year, month - 1, day);
+}
+
+async function sendTelegramMessage(token: string, chatId: string, text: string) {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text }),
     });
+    if (!res.ok) throw new Error(`Telegram API error: ${res.status}`);
+}
+
+router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
+    const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
+
+    const offerLinks: string[] = [];
+    $('a.cb-offer[href*="/inzerat/"]').each((_i, el) => {
+        if (startDate) {
+            const publishedString = $(el).find('.cb-time-ago').attr('title') ?? '';
+            const publishedDate = parseCzechDate(publishedString);
+            if (publishedDate && publishedDate < startDate) return;
+        }
+        const href = $(el).attr('href');
+        if (href) offerLinks.push(href);
+    });
+
     if (offerLinks.length === 0) {
-        log.info('No new offers found, skipping.');
+        log.info('No new offers found on this page.');
         return;
     }
+
+    log.info(`Found ${offerLinks.length} offers on this page.`);
     await enqueueLinks({ urls: offerLinks, baseUrl: request.loadedUrl, label: 'OFFER', userData: request.userData });
 
     const nextPage = $('.paginator__item--next a[href*="vp-page="]').attr('href');
@@ -48,20 +61,16 @@ router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
     const description = $('.offer-detail__desc').text().trim();
     const created = $('.cb-time-ago').attr('title');
     const location = $('.cb-seller-box__location').text().trim();
-    await pushData({ title, price, description, created, location, url: request.loadedUrl });
 
+    await pushData({ title, price, description, created, location, url: request.loadedUrl });
     seenOffers[offerId] = new Date().toISOString();
 
     if (telegramToken && telegramChatId) {
+        const message = `${title}\nPrice: ${price}\nLocation: ${location}\nCreated: ${created}\nURL: ${request.loadedUrl}`;
         try {
-            const message = `${title}\nPrice: ${price}\nLocation: ${location}\nCreated: ${created}\nURL: ${request.loadedUrl}`;
-            await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: telegramChatId, text: message }),
-            });
-        } catch {
-            log.error('Error sending Telegram message.');
+            await sendTelegramMessage(telegramToken, telegramChatId, message);
+        } catch (err) {
+            log.error(`Failed to send Telegram message for ${offerId}`, { error: String(err) });
         }
     }
 });
