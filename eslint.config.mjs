@@ -6,7 +6,7 @@ import tsEslint from 'typescript-eslint';
 
 // eslint-disable-next-line import-x/no-default-export
 export default [
-    { ignores: ['**/dist', '**/test', 'eslint.config.mjs'] },
+    { ignores: ['**/dist', '**/test', '.agents', '.claude', 'eslint.config.mjs'] },
     ...apify,
     prettier,
     {

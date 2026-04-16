@@ -1,5 +1,5 @@
 import { createCheerioRouter, type KeyValueStore } from '@crawlee/cheerio';
-import { Actor, log } from 'apify';
+import { Actor, log as globalLog } from 'apify';
 
 const STORE_NAME = 'cyklobazar-state';
 const SEEN_OFFERS_KEY = 'SEEN_OFFERS';
@@ -15,7 +15,7 @@ export async function initSeenOffers() {
     for (const [id, date] of Object.entries(seenOffers)) {
         if (new Date(date).getTime() < cutoff) delete seenOffers[id];
     }
-    log.info(`Loaded ${Object.keys(seenOffers).length} seen offers after pruning`);
+    globalLog.info(`Loaded ${Object.keys(seenOffers).length} seen offers after pruning`);
 }
 
 async function saveSeenOffers() {
