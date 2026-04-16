@@ -59,14 +59,16 @@ router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
     const title = $('.offer-detail__header h1').text().trim();
     const price = $('.cb-seller-box__price').text().trim();
     const description = $('.offer-detail__desc').text().trim();
-    const created = $('.cb-time-ago').attr('title');
+    const createdRaw = $('.cb-time-ago').attr('title') ?? '';
+    const created = parseCzechDate(createdRaw);
     const location = $('.cb-seller-box__location').text().trim();
 
-    await pushData({ title, price, description, created, location, url: request.loadedUrl });
+    await pushData({ title, price, description, created: created?.toISOString() ?? null, location, url: request.loadedUrl });
     seenOffers[offerId] = new Date().toISOString();
 
     if (telegramToken && telegramChatId) {
-        const message = `${title}\nPrice: ${price}\nLocation: ${location}\nCreated: ${created}\nURL: ${request.loadedUrl}`;
+        const createdStr = created ? created.toLocaleDateString('cs-CZ') : 'neznámé';
+        const message = `${title}\nCena: ${price}\nMísto: ${location}\nVytvořeno: ${createdStr}\nURL: ${request.loadedUrl}`;
         try {
             await sendTelegramMessage(telegramToken, telegramChatId, message);
         } catch (err) {
