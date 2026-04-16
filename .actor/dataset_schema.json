@@ -6,7 +6,7 @@
         "overview": {
             "title": "Overview",
             "transformation": {
-                "fields": ["title", "url"]
+                "fields": ["title", "price", "location", "created", "url"]
             },
             "display": {
                 "component": "table",
@@ -14,6 +14,18 @@
                     "title": {
                         "label": "Title",
                         "format": "text"
+                    },
+                    "price": {
+                        "label": "Price",
+                        "format": "text"
+                    },
+                    "location": {
+                        "label": "Location",
+                        "format": "text"
+                    },
+                    "created": {
+                        "label": "Created",
+                        "format": "date"
                     },
                     "url": {
                         "label": "URL",
