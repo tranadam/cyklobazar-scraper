@@ -44,15 +44,17 @@ router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
     const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
 
     const offerLinks: string[] = [];
-    $('a.cb-offer[href*="/inzerat/"]').each((_i, el) => {
-        if (startDate) {
-            const publishedString = $(el).find('.cb-time-ago').attr('title') ?? '';
-            const publishedDate = parseCzechDate(publishedString);
-            if (publishedDate && publishedDate < startDate) return;
-        }
-        const href = $(el).attr('href');
-        if (href) offerLinks.push(href);
-    });
+    $('a.cb-offer[href*="/inzerat/"]')
+        .not('.cb-offer-list--vertical a')
+        .each((_i, el) => {
+            if (startDate) {
+                const publishedString = $(el).find('.cb-time-ago').attr('title') ?? '';
+                const publishedDate = parseCzechDate(publishedString);
+                if (publishedDate && publishedDate < startDate) return;
+            }
+            const href = $(el).attr('href');
+            if (href) offerLinks.push(href);
+        });
 
     if (offerLinks.length === 0) {
         log.info('No new offers found on this page.');
