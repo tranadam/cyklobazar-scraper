@@ -1,9 +1,16 @@
+import { setTimeout } from 'node:timers/promises';
+
 import { CheerioCrawler } from '@crawlee/cheerio';
 import { Actor } from 'apify';
 
 import { router } from './routes.js';
 
 await Actor.init();
+
+Actor.on('aborting', async () => {
+    await setTimeout(1000);
+    await Actor.exit();
+});
 
 interface Input {
     urls: { url: string }[];
@@ -13,7 +20,7 @@ interface Input {
 }
 
 const input = await Actor.getInput<Input>();
-if (!input) throw new Error('Input is required');
+if (!input?.urls?.length) throw new Error('At least one URL is required');
 const { urls, telegramToken, startDate, telegramChatId } = input;
 
 // Load seen offers and prune entries older than 30 days

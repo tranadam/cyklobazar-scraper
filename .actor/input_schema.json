@@ -1,32 +1,34 @@
 {
     "$schema": "https://apify.com/schemas/v1/input.ide.json",
-    "title": "CheerioCrawler Template",
+    "title": "Cyklobazar Scraper Input",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "urls": {
             "title": "URLs",
             "type": "array",
-            "description": "URLs to scrape offers from",
+            "description": "Cyklobazar URLs to scrape offers from (e.g. category pages with filters)",
             "editor": "requestListSources"
         },
         "startDate": {
             "title": "Start Date",
             "type": "string",
-            "description": "The date to start crawling from.",
-            "editor": "textfield"
-        },
-        "telegramChatId": {
-            "title": "Telegram Chat ID",
-            "type": "string",
-            "description": "Telegram chat ID for sending notifications.",
+            "description": "Only scrape offers published after this date (YYYY-MM-DD)",
             "editor": "textfield"
         },
         "telegramToken": {
             "title": "Telegram Bot Token",
             "type": "string",
-            "description": "Telegram bot token for sending notifications.",
+            "description": "Telegram bot token for sending notifications",
+            "editor": "textfield",
+            "isSecret": true
+        },
+        "telegramChatId": {
+            "title": "Telegram Chat ID",
+            "type": "string",
+            "description": "Telegram chat ID to send notifications to",
             "editor": "textfield"
         }
-    }
+    },
+    "required": ["urls"]
 }

@@ -4,14 +4,16 @@ export const router = createCheerioRouter();
 
 router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
     const offerLinks: string[] = [];
-    const startDate = new Date(request.userData.startDate);
+    const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
     $('a.cb-offer[href*="/inzerat/"]').each((i, el) => {
-        const publishedString = $(el).find('.cb-time-ago').attr('title');
-        const publishedAt = /\d+\. \d+\. \d{4}/.exec(publishedString ?? '')?.[0];
-        if (publishedAt) {
-            const [day, month, year] = publishedAt.split('.').map(Number);
-            const publishedDate = new Date(year, month - 1, day);
-            if (publishedDate < startDate) return;
+        if (startDate) {
+            const publishedString = $(el).find('.cb-time-ago').attr('title');
+            const publishedAt = /\d+\. \d+\. \d{4}/.exec(publishedString ?? '')?.[0];
+            if (publishedAt) {
+                const [day, month, year] = publishedAt.split('.').map(Number);
+                const publishedDate = new Date(year, month - 1, day);
+                if (publishedDate < startDate) return;
+            }
         }
         const offerLink = $(el).attr('href');
         if (offerLink) {
@@ -50,16 +52,16 @@ router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
 
     seenOffers[offerId] = new Date().toISOString();
 
-    try {
-        if (telegramToken && telegramChatId) {
+    if (telegramToken && telegramChatId) {
+        try {
             const message = `${title}\nPrice: ${price}\nLocation: ${location}\nCreated: ${created}\nURL: ${request.loadedUrl}`;
             await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: telegramChatId, text: message }),
             });
+        } catch {
+            log.error('Error sending Telegram message.');
         }
-    } catch {
-        log.error('Error sending Telegram message.');
     }
 });
