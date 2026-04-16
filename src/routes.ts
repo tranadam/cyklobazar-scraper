@@ -1,4 +1,26 @@
-import { createCheerioRouter } from '@crawlee/cheerio';
+import { createCheerioRouter, type KeyValueStore } from '@crawlee/cheerio';
+import { Actor, log } from 'apify';
+
+const STORE_NAME = 'cyklobazar-state';
+const SEEN_OFFERS_KEY = 'SEEN_OFFERS';
+const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+let seenOffers: Record<string, string> = {};
+let store: KeyValueStore;
+
+export async function initSeenOffers() {
+    store = await Actor.openKeyValueStore(STORE_NAME);
+    seenOffers = (await store.getValue(SEEN_OFFERS_KEY)) ?? {};
+    const cutoff = Date.now() - PRUNE_AFTER_MS;
+    for (const [id, date] of Object.entries(seenOffers)) {
+        if (new Date(date).getTime() < cutoff) delete seenOffers[id];
+    }
+    log.info(`Loaded ${Object.keys(seenOffers).length} seen offers after pruning`);
+}
+
+async function saveSeenOffers() {
+    await store.setValue(SEEN_OFFERS_KEY, seenOffers);
+}
 
 export const router = createCheerioRouter();
 
@@ -49,7 +71,6 @@ router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
 
 router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
     const offerId = new URL(request.loadedUrl).pathname;
-    const { telegramToken, telegramChatId, seenOffers } = request.userData;
 
     if (seenOffers[offerId]) {
         log.info(`Already seen, skipping: ${offerId}`);
@@ -63,9 +84,18 @@ router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
     const created = parseCzechDate(createdRaw);
     const location = $('.cb-seller-box__location').text().trim();
 
-    await pushData({ title, price, description, created: created?.toISOString() ?? null, location, url: request.loadedUrl });
+    await pushData({
+        title,
+        price,
+        description,
+        created: created?.toISOString() ?? null,
+        location,
+        url: request.loadedUrl,
+    });
     seenOffers[offerId] = new Date().toISOString();
+    await saveSeenOffers();
 
+    const { telegramToken, telegramChatId } = request.userData;
     if (telegramToken && telegramChatId) {
         const createdStr = created ? created.toLocaleDateString('cs-CZ') : 'neznámé';
         const message = `${title}\nCena: ${price}\nMísto: ${location}\nVytvořeno: ${createdStr}\nURL: ${request.loadedUrl}`;
