@@ -19,10 +19,28 @@ router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
             offerLinks.push(offerLink);
         }
     });
-    await enqueueLinks({ urls: offerLinks, baseUrl: request.loadedUrl, label: 'OFFER' });
+    if (offerLinks.length === 0) {
+        log.info('No new offers found, skipping.');
+        return;
+    }
+    await enqueueLinks({ urls: offerLinks, baseUrl: request.loadedUrl, label: 'OFFER', userData: request.userData });
+
+    const nextPage = $('.paginator__item--next a[href*="vp-page="]').attr('href');
+    if (nextPage) {
+        log.info(`Enqueuing next page: ${nextPage}`);
+        await enqueueLinks({ urls: [nextPage], baseUrl: request.loadedUrl, userData: request.userData });
+    }
 });
 
 router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
+    const offerId = new URL(request.loadedUrl).pathname;
+    const { telegramToken, telegramChatId, seenOffers } = request.userData;
+
+    if (seenOffers[offerId]) {
+        log.info(`Already seen, skipping: ${offerId}`);
+        return;
+    }
+
     const title = $('.offer-detail__header h1').text().trim();
     const price = $('.cb-seller-box__price').text().trim();
     const description = $('.offer-detail__desc').text().trim();
@@ -30,8 +48,9 @@ router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
     const location = $('.cb-seller-box__location').text().trim();
     await pushData({ title, price, description, created, location, url: request.loadedUrl });
 
+    seenOffers[offerId] = new Date().toISOString();
+
     try {
-        const { telegramToken, telegramChatId } = request.userData;
         if (telegramToken && telegramChatId) {
             const message = `${title}\nPrice: ${price}\nLocation: ${location}\nCreated: ${created}\nURL: ${request.loadedUrl}`;
             await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
