@@ -1,5 +1,7 @@
-import { createCheerioRouter, type KeyValueStore } from '@crawlee/cheerio';
+import { type CheerioAPI, createCheerioRouter, type KeyValueStore } from '@crawlee/cheerio';
 import { Actor, log as globalLog } from 'apify';
+
+import { sendTelegramMessage } from './utils.js';
 
 const STORE_NAME = 'cyklobazar-state';
 const SEEN_OFFERS_KEY = 'SEEN_OFFERS';
@@ -18,11 +20,9 @@ export async function initSeenOffers() {
     globalLog.info(`Loaded ${Object.keys(seenOffers).length} seen offers after pruning`);
 }
 
-async function saveSeenOffers() {
+export async function saveSeenOffers() {
     await store.setValue(SEEN_OFFERS_KEY, seenOffers);
 }
-
-export const router = createCheerioRouter();
 
 function parseCzechDate(text: string): Date | null {
     const match = /\d+\.\s*\d+\.\s*\d{4}/.exec(text)?.[0];
@@ -31,18 +31,10 @@ function parseCzechDate(text: string): Date | null {
     return new Date(year, month - 1, day);
 }
 
-async function sendTelegramMessage(token: string, chatId: string, text: string) {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text }),
-    });
-    if (!res.ok) throw new Error(`Telegram API error: ${res.status}`);
-}
-
-router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
-    const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
-
+/**
+ * Scrape links from the listing page, filtering by startDate if provided. Excludes ad offers.
+ */
+function scrapeOfferLinks($: CheerioAPI, startDate: Date | null): string[] {
     const offerLinks: string[] = [];
     $('a.cb-offer[href*="/inzerat/"]')
         .not('.cb-offer-list--vertical a')
@@ -55,16 +47,48 @@ router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
             const href = $(el).attr('href');
             if (href) offerLinks.push(href);
         });
+    return offerLinks;
+}
+
+/**
+ * Get the URL of the next page on listings page.
+ */
+function scrapeNextPage($: CheerioAPI): string | null {
+    const nextPage = $('.paginator__item--next a[href*="vp-page="]').attr('href');
+    return nextPage || null;
+}
+
+/**
+ * Scrape offer details from the offer page.
+ */
+function scrapeOfferDetails($: CheerioAPI) {
+    const createdRaw = $('.cb-time-ago').attr('title') ?? '';
+
+    return {
+        title: $('.offer-detail__header h1').text().trim(),
+        price: $('.cb-seller-box__price').text().trim(),
+        description: $('.offer-detail__desc').text().trim(),
+        location: $('.cb-seller-box__location').text().trim(),
+        created: parseCzechDate(createdRaw)?.toISOString() ?? null,
+    };
+}
+
+export const router = createCheerioRouter();
+
+router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
+    const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
+
+    const offerLinks = scrapeOfferLinks($, startDate);
 
     if (offerLinks.length === 0) {
-        log.info('No new offers found on this page.');
+        log.info(`No new offers found on this page: ${request.loadedUrl}`);
         return;
     }
 
-    log.info(`Found ${offerLinks.length} offers on this page.`);
+    log.info(`Found ${offerLinks.length} offers on this page: ${request.loadedUrl}`);
     await enqueueLinks({ urls: offerLinks, baseUrl: request.loadedUrl, label: 'OFFER', userData: request.userData });
 
-    const nextPage = $('.paginator__item--next a[href*="vp-page="]').attr('href');
+    const nextPage = scrapeNextPage($);
     if (nextPage) {
         log.info(`Enqueuing next page: ${nextPage}`);
         await enqueueLinks({ urls: [nextPage], baseUrl: request.loadedUrl, userData: request.userData });
@@ -74,33 +98,26 @@ router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
 router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
     const offerId = new URL(request.loadedUrl).pathname;
 
+    const offerDetails = scrapeOfferDetails($);
+    await pushData({ ...offerDetails, url: request.loadedUrl });
+
     if (seenOffers[offerId]) {
-        log.info(`Already seen, skipping: ${offerId}`);
+        log.info(`Already seen, skipping Telegram notification: ${offerId}`);
         return;
     }
 
-    const title = $('.offer-detail__header h1').text().trim();
-    const price = $('.cb-seller-box__price').text().trim();
-    const description = $('.offer-detail__desc').text().trim();
-    const createdRaw = $('.cb-time-ago').attr('title') ?? '';
-    const created = parseCzechDate(createdRaw);
-    const location = $('.cb-seller-box__location').text().trim();
-
-    await pushData({
-        title,
-        price,
-        description,
-        created: created?.toISOString() ?? null,
-        location,
-        url: request.loadedUrl,
-    });
     seenOffers[offerId] = new Date().toISOString();
-    await saveSeenOffers();
 
     const { telegramToken, telegramChatId } = request.userData;
     if (telegramToken && telegramChatId) {
-        const createdStr = created ? created.toLocaleDateString('cs-CZ') : 'neznámé';
-        const message = `${title}\nCena: ${price}\nMísto: ${location}\nVytvořeno: ${createdStr}\nURL: ${request.loadedUrl}`;
+        const createdStr = offerDetails.created
+            ? new Date(offerDetails.created).toLocaleDateString('cs-CZ')
+            : 'nezadáno';
+        const message = `${offerDetails.title}\n\
+Cena: ${offerDetails.price}\n\
+Místo: ${offerDetails.location}\n\
+Vytvořeno: ${createdStr}\n\
+URL: ${request.loadedUrl}`;
         try {
             await sendTelegramMessage(telegramToken, telegramChatId, message);
         } catch (err) {
