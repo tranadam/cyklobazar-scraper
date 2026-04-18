@@ -3,6 +3,18 @@ import { Actor, log as globalLog } from 'apify';
 
 import { sendTelegramMessage } from './utils.js';
 
+interface OfferBase {
+    title: string;
+    price: string;
+    description: string;
+    location: string;
+    created: string | null;
+}
+
+interface Offer extends OfferBase {
+    url: string;
+}
+
 const STORE_NAME = 'cyklobazar-state';
 const SEEN_OFFERS_KEY = 'SEEN_OFFERS';
 const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
@@ -21,9 +33,12 @@ export async function initSeenOffers() {
 }
 
 export async function saveSeenOffers() {
-    await store.setValue(SEEN_OFFERS_KEY, seenOffers);
+    await store?.setValue(SEEN_OFFERS_KEY, seenOffers);
 }
 
+/**
+ * Parse from this format: Vytvořeno 18. 4. 2026, 13:02
+ */
 function parseCzechDate(text: string): Date | null {
     const match = /\d+\.\s*\d+\.\s*\d{4}/.exec(text)?.[0];
     if (!match) return null;
@@ -31,37 +46,27 @@ function parseCzechDate(text: string): Date | null {
     return new Date(year, month - 1, day);
 }
 
-/**
- * Scrape links from the listing page, filtering by startDate if provided. Excludes ad offers.
- */
-function scrapeOfferLinks($: CheerioAPI, startDate: Date | null): string[] {
-    const offerLinks: string[] = [];
-    $('a.cb-offer[href*="/inzerat/"]')
-        .not('.cb-offer-list--vertical a')
-        .each((_i, el) => {
-            if (startDate) {
-                const publishedString = $(el).find('.cb-time-ago').attr('title') ?? '';
-                const publishedDate = parseCzechDate(publishedString);
-                if (publishedDate && publishedDate < startDate) return;
-            }
-            const href = $(el).attr('href');
-            if (href) offerLinks.push(href);
-        });
-    return offerLinks;
+async function sendTelegramOffer(offerDetails: Offer, telegramToken: string, telegramChatId: string) {
+    const createdStr = offerDetails.created ? new Date(offerDetails.created).toLocaleDateString('cs-CZ') : 'nezadáno';
+    const message = `${offerDetails.title}\nCena: ${offerDetails.price}\nMísto: ${offerDetails.location}\nVytvořeno: ${createdStr}\n${offerDetails.url}`;
+    try {
+        await sendTelegramMessage(telegramToken, telegramChatId, message);
+    } catch (err) {
+        globalLog.error(`Failed to send Telegram message for ${offerDetails.url}`, { error: String(err) });
+    }
 }
 
 /**
  * Get the URL of the next page on listings page.
  */
 function scrapeNextPage($: CheerioAPI): string | null {
-    const nextPage = $('.paginator__item--next a[href*="vp-page="]').attr('href');
-    return nextPage || null;
+    return $('.paginator__item--next a[href*="vp-page="]').attr('href') ?? null;
 }
 
 /**
  * Scrape offer details from the offer page.
  */
-function scrapeOfferDetails($: CheerioAPI) {
+function scrapeOfferDetails($: CheerioAPI): OfferBase {
     const createdRaw = $('.cb-time-ago').attr('title') ?? '';
 
     return {
@@ -73,20 +78,76 @@ function scrapeOfferDetails($: CheerioAPI) {
     };
 }
 
+/**
+ * Scrape info seen on offer card on listings page
+ */
+function scrapeListingsOfferInfo($: CheerioAPI, startDate: Date | null, baseUrl: string): Offer[] {
+    const info: Offer[] = [];
+    $('a.cb-offer[href*="/inzerat/"]')
+        .not('.cb-offer-list--vertical a')
+        .each((_i, el) => {
+            const publishedString = $(el).find('.cb-time-ago').attr('title') ?? '';
+            const publishedDate = parseCzechDate(publishedString);
+            if (startDate) {
+                if (publishedDate && publishedDate < startDate) return;
+            }
+
+            const rawHref = $(el).attr('href');
+            if (!rawHref) return;
+            const href = new URL(rawHref, baseUrl).toString();
+
+            info.push({
+                url: href,
+                title: $(el).find('.cb-offer__header h4').text().trim(),
+                price: $(el).find('.cb-offer__price').text().trim(),
+                description: $(el).find('.cb-offer__desc').text().trim(),
+                location: $(el).find('.cb-offer__tag-location').text().trim(),
+                created: publishedDate?.toISOString() ?? null,
+            });
+        });
+    return info;
+}
+
 export const router = createCheerioRouter();
 
-router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
+router.addDefaultHandler(async ({ enqueueLinks, pushData, request, $, log }) => {
     const startDate = request.userData.startDate ? new Date(request.userData.startDate) : null;
 
-    const offerLinks = scrapeOfferLinks($, startDate);
+    const offerInfos = scrapeListingsOfferInfo($, startDate, request.loadedUrl);
 
-    if (offerLinks.length === 0) {
+    if (offerInfos.length === 0) {
         log.info(`No new offers found on this page: ${request.loadedUrl}`);
         return;
     }
 
-    log.info(`Found ${offerLinks.length} offers on this page: ${request.loadedUrl}`);
-    await enqueueLinks({ urls: offerLinks, baseUrl: request.loadedUrl, label: 'OFFER', userData: request.userData });
+    if (request.userData.detailedOutput) {
+        // Enqueue offer pages for detailed scraping
+        log.info(`Found ${offerInfos.length} offers on this page: ${request.loadedUrl}`);
+        await enqueueLinks({
+            urls: offerInfos.map((o) => o.url),
+            baseUrl: request.loadedUrl,
+            label: 'OFFER',
+            userData: request.userData,
+        });
+    } else {
+        // Push the scraped data and send Telegram notification
+        for (const o of offerInfos) {
+            await pushData(o);
+
+            const offerId = new URL(o.url).pathname;
+            const wasSeen = Boolean(seenOffers[offerId]);
+            seenOffers[offerId] = new Date().toISOString();
+            if (wasSeen) {
+                log.info(`Already seen, skipping Telegram notification: ${offerId}`);
+                continue;
+            }
+
+            const { telegramToken, telegramChatId } = request.userData;
+            if (telegramToken && telegramChatId) {
+                await sendTelegramOffer(o, telegramToken, telegramChatId);
+            }
+        }
+    }
 
     const nextPage = scrapeNextPage($);
     if (nextPage) {
@@ -96,32 +157,20 @@ router.addDefaultHandler(async ({ enqueueLinks, request, $, log }) => {
 });
 
 router.addHandler('OFFER', async ({ request, $, log, pushData }) => {
-    const offerId = new URL(request.loadedUrl).pathname;
-
     const offerDetails = scrapeOfferDetails($);
-    await pushData({ ...offerDetails, url: request.loadedUrl });
+    const offer = { ...offerDetails, url: request.loadedUrl };
+    await pushData(offer);
 
-    if (seenOffers[offerId]) {
+    const offerId = new URL(request.loadedUrl).pathname;
+    const wasSeen = Boolean(seenOffers[offerId]);
+    seenOffers[offerId] = new Date().toISOString();
+    if (wasSeen) {
         log.info(`Already seen, skipping Telegram notification: ${offerId}`);
         return;
     }
 
-    seenOffers[offerId] = new Date().toISOString();
-
     const { telegramToken, telegramChatId } = request.userData;
     if (telegramToken && telegramChatId) {
-        const createdStr = offerDetails.created
-            ? new Date(offerDetails.created).toLocaleDateString('cs-CZ')
-            : 'nezadáno';
-        const message = `${offerDetails.title}\n\
-Cena: ${offerDetails.price}\n\
-Místo: ${offerDetails.location}\n\
-Vytvořeno: ${createdStr}\n\
-URL: ${request.loadedUrl}`;
-        try {
-            await sendTelegramMessage(telegramToken, telegramChatId, message);
-        } catch (err) {
-            log.error(`Failed to send Telegram message for ${offerId}`, { error: String(err) });
-        }
+        await sendTelegramOffer(offer, telegramToken, telegramChatId);
     }
 });

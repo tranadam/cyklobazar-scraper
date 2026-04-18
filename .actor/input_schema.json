@@ -10,6 +10,13 @@
             "description": "Cyklobazar URLs to scrape offers from (e.g. category pages with filters)",
             "editor": "requestListSources"
         },
+        "detailedOutput": {
+            "title": "Detailed Output",
+            "type": "boolean",
+            "description": "If true, also scrapes the complete offer details. If you only need the Telegram notifications, you can leave this unchecked for faster and cheaper scraping.",
+            "editor": "checkbox",
+            "default": false
+        },
         "startDate": {
             "title": "Start Date",
             "type": "string",

@@ -6,12 +6,11 @@ import { sleep } from './utils.js';
 
 interface Input {
     urls: { url: string }[];
+    detailedOutput: boolean;
     startDate?: string;
     telegramToken?: string;
     telegramChatId?: string;
 }
-
-await Actor.init();
 
 Actor.on('aborting', async () => {
     await saveSeenOffers();
@@ -19,9 +18,11 @@ Actor.on('aborting', async () => {
     await Actor.exit();
 });
 
+await Actor.init();
+
 const input = await Actor.getInput<Input>();
 if (!input?.urls?.length) throw new Error('At least one URL is required');
-const { urls, telegramToken, startDate, telegramChatId } = input;
+const { urls, telegramToken, startDate, telegramChatId, detailedOutput } = input;
 
 await initSeenOffers();
 
@@ -30,8 +31,11 @@ const crawler = new CheerioCrawler({
     requestHandler: router,
 });
 
-const userData = { startDate, telegramToken, telegramChatId };
-await crawler.run(urls.map((u) => ({ ...u, userData })));
+const userData = { startDate, telegramToken, telegramChatId, detailedOutput };
+try {
+    await crawler.run(urls.map((u) => ({ ...u, userData })));
+} finally {
+    await saveSeenOffers();
+}
 
-await saveSeenOffers();
 await Actor.exit();
