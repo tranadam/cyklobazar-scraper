@@ -8,7 +8,8 @@
             "title": "URLs",
             "type": "array",
             "description": "Cyklobazar URLs to scrape offers from (e.g. category pages with filters)",
-            "editor": "requestListSources"
+            "editor": "requestListSources",
+            "prefill": ["https://www.cyklobazar.cz/gravel-bike"]
         },
         "detailedOutput": {
             "title": "Detailed Output",
