@@ -84,7 +84,7 @@ function scrapeOfferDetails($: CheerioAPI): OfferBase {
 function scrapeListingsOfferInfo($: CheerioAPI, startDate: Date | null, baseUrl: string): Offer[] {
     const info: Offer[] = [];
     $('a.cb-offer[href*="/inzerat/"]')
-        .not('.cb-offer-list--vertical a')
+        .not('a.cb-offer--vertical')
         .each((_i, el) => {
             const publishedString = $(el).find('.cb-time-ago').attr('title') ?? '';
             const publishedDate = parseCzechDate(publishedString);
