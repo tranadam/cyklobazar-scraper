@@ -24,13 +24,13 @@ Both modes push results to the dataset and send Telegram notifications for new o
 
 ## Input
 
-| Field              | Type    | Required | Description                                                                |
-| ------------------ | ------- | -------- | -------------------------------------------------------------------------- |
-| URLs               | array   | Yes      | Cyklobazar URLs to scrape (category pages with filters)                    |
+| Field              | Type    | Required | Description                                                               |
+| ------------------ | ------- | -------- | ------------------------------------------------------------------------- |
+| URLs               | array   | Yes      | Cyklobazar URLs to scrape (category pages with filters)                   |
 | Detailed Output    | boolean | No       | If checked, also visits each offer page for full details (default: false) |
-| Start Date         | string  | No       | Only scrape offers after this date (YYYY-MM-DD)                            |
-| Telegram Bot Token | string  | No       | Bot token from @BotFather for notifications                                |
-| Telegram Chat ID   | string  | No       | Chat ID to send notifications to                                           |
+| Start Date         | string  | No       | Only scrape offers after this date (YYYY-MM-DD)                           |
+| Telegram Bot Token | string  | No       | Bot token from @BotFather for notifications                               |
+| Telegram Chat ID   | string  | No       | Chat ID to send notifications to                                          |
 
 ## Output
 
