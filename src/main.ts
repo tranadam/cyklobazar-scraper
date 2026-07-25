@@ -1,7 +1,7 @@
 import { CheerioCrawler } from '@crawlee/cheerio';
 import { Actor } from 'apify';
 
-import { initSeenOffers, router, saveSeenOffers } from './routes.js';
+import { getStoreName, initSeenOffers, router, saveSeenOffers } from './routes.js';
 import { sleep } from './utils.js';
 
 interface Input {
@@ -24,7 +24,7 @@ const input = await Actor.getInput<Input>();
 if (!input?.urls?.length) throw new Error('At least one URL is required');
 const { urls, telegramToken, startDate, telegramChatId, detailedOutput } = input;
 
-await initSeenOffers();
+await initSeenOffers(getStoreName(telegramChatId));
 
 const crawler = new CheerioCrawler({
     maxRequestsPerCrawl: 100,

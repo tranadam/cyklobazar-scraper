@@ -15,21 +15,32 @@ interface Offer extends OfferBase {
     url: string;
 }
 
-const STORE_NAME = 'cyklobazar-state';
+const STORE_NAME_PREFIX = 'cyklobazar-state';
 const SEEN_OFFERS_KEY = 'SEEN_OFFERS';
 const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 
 let seenOffers: Record<string, string> = {};
 let store: KeyValueStore;
 
-export async function initSeenOffers() {
-    store = await Actor.openKeyValueStore(STORE_NAME);
+/**
+ * Scope the seen-offer state per Telegram chat so that separate schedules
+ * notifying different chats keep independent dedup state and don't suppress
+ * each other's notifications. Falls back to the shared prefix when no chat is set.
+ */
+export function getStoreName(telegramChatId?: string): string {
+    if (!telegramChatId) return STORE_NAME_PREFIX;
+    const safeChatId = telegramChatId.replace(/[^a-zA-Z0-9]/g, '-');
+    return `${STORE_NAME_PREFIX}-${safeChatId}`;
+}
+
+export async function initSeenOffers(storeName: string) {
+    store = await Actor.openKeyValueStore(storeName);
     seenOffers = (await store.getValue(SEEN_OFFERS_KEY)) ?? {};
     const cutoff = Date.now() - PRUNE_AFTER_MS;
     for (const [id, date] of Object.entries(seenOffers)) {
         if (new Date(date).getTime() < cutoff) delete seenOffers[id];
     }
-    globalLog.info(`Loaded ${Object.keys(seenOffers).length} seen offers after pruning`);
+    globalLog.info(`Loaded ${Object.keys(seenOffers).length} seen offers from store "${storeName}" after pruning`);
 }
 
 export async function saveSeenOffers() {
@@ -51,8 +62,11 @@ async function sendTelegramOffer(offerDetails: Offer, telegramToken: string, tel
     const message = `${offerDetails.title}\nCena: ${offerDetails.price}\nMísto: ${offerDetails.location}\nVytvořeno: ${createdStr}\n${offerDetails.url}`;
     try {
         await sendTelegramMessage(telegramToken, telegramChatId, message);
+        globalLog.info(`Sent Telegram notification to chat ${telegramChatId} for ${offerDetails.url}`);
     } catch (err) {
-        globalLog.error(`Failed to send Telegram message for ${offerDetails.url}`, { error: String(err) });
+        globalLog.error(`Failed to send Telegram message to chat ${telegramChatId} for ${offerDetails.url}`, {
+            error: String(err),
+        });
     }
 }
 

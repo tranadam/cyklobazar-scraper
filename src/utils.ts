@@ -10,5 +10,8 @@ export async function sendTelegramMessage(token: string, chatId: string, text: s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, text }),
     });
-    if (!res.ok) throw new Error(`Telegram API error: ${res.status}`);
+    // Telegram returns a descriptive JSON body on errors (e.g. "chat not found",
+    // "bot was blocked by the user") — surface it so failures are debuggable.
+    const body = await res.text();
+    if (!res.ok) throw new Error(`Telegram API error ${res.status}: ${body}`);
 }
